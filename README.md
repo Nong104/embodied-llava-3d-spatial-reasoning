@@ -69,7 +69,9 @@ peft
 accelerate
 bitsandbytes
 
-How to Run
+---
+
+## How to run
 
 1. Activate environment
 conda activate llava-qlora
