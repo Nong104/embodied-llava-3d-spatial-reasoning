@@ -1,0 +1,46 @@
+[
+  {
+    "scene_id": "scene0000_00",
+    "question": "What is next to the bed?",
+    "answers": ["nightstand"],
+    "objects": [
+      {
+        "category": "bed",
+        "category_id": 0,
+        "bbox": [1.2, 0.5, 2.1, 2.0, 0.8, 1.5]
+      },
+      {
+        "category": "nightstand",
+        "category_id": 1,
+        "bbox": [2.4, 0.5, 2.0, 0.5, 0.7, 0.5]
+      },
+      {
+        "category": "lamp",
+        "category_id": 2,
+        "bbox": [2.5, 1.1, 2.0, 0.3, 0.6, 0.3]
+      }
+    ]
+  },
+  {
+    "scene_id": "scene0001_00",
+    "question": "What object is in front of the sofa?",
+    "answers": ["table"],
+    "objects": [
+      {
+        "category": "sofa",
+        "category_id": 3,
+        "bbox": [0.5, 0.4, 1.8, 2.2, 0.9, 0.8]
+      },
+      {
+        "category": "table",
+        "category_id": 4,
+        "bbox": [0.5, 0.4, 0.9, 1.0, 0.5, 0.8]
+      },
+      {
+        "category": "chair",
+        "category_id": 5,
+        "bbox": [-0.8, 0.4, 0.9, 0.5, 0.8, 0.5]
+      }
+    ]
+  }
+]
