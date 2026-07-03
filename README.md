@@ -60,7 +60,8 @@ scripts/
   test_toy_scanqa_forward.py
   train_toy_scanqa.py
 
-Environment
+```
+## Environment
 Python environment was created with Conda.
 Main dependencies include:
 PyTorch
@@ -70,7 +71,7 @@ accelerate
 bitsandbytes
 
 ---
-
+```
 ## How to run
 
 1. Activate environment
@@ -85,7 +86,8 @@ python -m scripts.test_toy_scanqa_forward
 4. Run toy ScanQA training loop
 python -m scripts.train_toy_scanqa
 
-Current Status
+```
+## Current Status
 
 This repository currently contains a prototype-stage implementation.
 The toy ScanQA pipeline is used only for engineering validation.
