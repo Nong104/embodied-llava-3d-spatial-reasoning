@@ -1,4 +1,5 @@
 import json
+import warnings
 from pathlib import Path
 
 import torch
@@ -49,6 +50,78 @@ class ScanQADataset(Dataset):
 
         return {
             "scene_id": sample["scene_id"],
+            "question": question,
+            "answer": answer,
+            "boxes": boxes,
+            "category_ids": category_ids,
+            "object_mask": object_mask,
+        }
+
+
+class RealScanQADataset(Dataset):
+    """Loads the official ScanQA question-answer annotations (the JSON files
+    downloaded from the ScanQA release, e.g. ScanQA_v1.0_train.json).
+
+    IMPORTANT LIMITATION, to be removed once ScanNet access is granted:
+    the official ScanQA JSON only provides `object_ids` and `object_names`
+    for the objects relevant to each question's answer, not the full set of
+    3D object bounding boxes for every object in the scene. The per-scene
+    bounding boxes that Spatial3DEncoder needs come from ScanNet's own scene
+    annotations, which require going through ScanNet's Terms of Use process
+    separately (see docs/dataset.md in the ScanQA repo). Until that data is
+    available, `boxes` and `category_ids` here are randomly generated
+    placeholders with the correct shape, so that every downstream component
+    (Spatial3DEncoder, fusion modules, training loop) can already run
+    end-to-end on real questions and answers. This class raises a one-time
+    warning on construction so this limitation is never silently forgotten.
+    """
+
+    def __init__(
+        self,
+        json_path: str,
+        max_objects: int = 32,
+        num_categories: int = 100,
+    ):
+        self.json_path = Path(json_path)
+        self.max_objects = max_objects
+        self.num_categories = num_categories
+
+        with self.json_path.open("r", encoding="utf-8") as f:
+            self.samples = json.load(f)
+
+        warnings.warn(
+            "RealScanQADataset is using PLACEHOLDER 3D bounding boxes "
+            "(random values), because the official ScanQA JSON does not "
+            "include per-scene object bounding boxes. Real questions and "
+            "answers are used, but spatial reasoning results from this "
+            "dataset are not meaningful until real ScanNet-derived boxes "
+            "are wired in. See the RealScanQADataset docstring.",
+            UserWarning,
+            stacklevel=2,
+        )
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, index: int):
+        sample = self.samples[index]
+
+        question = sample["question"]
+        answer = sample["answers"][0]
+        scene_id = sample["scene_id"]
+
+        # Placeholder until real ScanNet-derived per-scene object boxes are
+        # available (see class docstring). Using a fixed number of objects
+        # (max_objects, all "real", none padded) keeps this simple; once
+        # real per-scene object counts are wired in, this should follow the
+        # same variable-length + object_mask padding pattern as
+        # ScanQADataset above.
+        boxes = torch.rand(self.max_objects, 6, dtype=torch.float32)
+        category_ids = torch.randint(0, self.num_categories, (self.max_objects,), dtype=torch.long)
+        object_mask = torch.ones(self.max_objects, dtype=torch.long)
+
+        return {
+            "scene_id": scene_id,
             "question": question,
             "answer": answer,
             "boxes": boxes,

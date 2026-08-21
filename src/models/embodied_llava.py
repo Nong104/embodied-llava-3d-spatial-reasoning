@@ -3,6 +3,20 @@ import torch.nn as nn
 
 from src.encoders.spatial_3d_encoder import Spatial3DEncoder
 from src.fusion.q_former_fusion import QFormerFusion
+from src.fusion.early_fusion import EarlyFusion
+from src.fusion.late_fusion import LateFusion
+from src.fusion.moe_fusion import MoEFusion
+
+
+# Maps the fusion_strategy string used throughout the ablation study
+# (Table 3.1 / Section 3.8.3) to the corresponding fusion module class.
+# Adding a fifth strategy in the future only requires one new entry here.
+FUSION_STRATEGIES = {
+    "qformer": QFormerFusion,
+    "early": EarlyFusion,
+    "late": LateFusion,
+    "moe": MoEFusion,
+}
 
 
 class EmbodiedLLaVA(nn.Module):
@@ -11,11 +25,19 @@ class EmbodiedLLaVA(nn.Module):
         llava_model: nn.Module,
         num_categories: int,
         hidden_dim: int = 4096,
+        fusion_strategy: str = "qformer",
         num_fusion_queries: int = 32,
     ):
         super().__init__()
 
+        if fusion_strategy not in FUSION_STRATEGIES:
+            raise ValueError(
+                f"Unknown fusion_strategy {fusion_strategy!r}. "
+                f"Expected one of {list(FUSION_STRATEGIES)}."
+            )
+
         self.llava_model = llava_model
+        self.fusion_strategy = fusion_strategy
 
         self.spatial_encoder = Spatial3DEncoder(
             num_categories=num_categories,
@@ -24,12 +46,21 @@ class EmbodiedLLaVA(nn.Module):
             output_dim=hidden_dim,
         )
 
-        self.fusion = QFormerFusion(
-            input_dim=hidden_dim,
-            hidden_dim=hidden_dim,
-            num_queries=num_fusion_queries,
-            num_heads=8,
-        )
+        # QFormerFusion is the only strategy with a different constructor
+        # signature (it needs num_queries/num_heads for its cross-attention
+        # queries); the other three only need hidden_dim. This branch is the
+        # one place that knows about that difference, so everything below
+        # __init__ can stay identical regardless of which strategy is active.
+        if fusion_strategy == "qformer":
+            self.fusion = QFormerFusion(
+                input_dim=hidden_dim,
+                hidden_dim=hidden_dim,
+                num_queries=num_fusion_queries,
+                num_heads=8,
+            )
+        else:
+            fusion_cls = FUSION_STRATEGIES[fusion_strategy]
+            self.fusion = fusion_cls(hidden_dim=hidden_dim)
 
     def encode_spatial_tokens(
         self,
