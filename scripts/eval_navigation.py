@@ -102,7 +102,7 @@ def main():
                 boxes, category_ids = get_scene_boxes(current_event)
                 boxes = boxes.unsqueeze(0).to(device)
                 category_ids = category_ids.unsqueeze(0).to(device)
-                image_tokens = torch.randn(1, 64, 4096, device=device)
+                image_tokens = encode_image(current_event.frame, processor, llava_model, device)
 
                 out = nav_head(image_tokens, boxes, category_ids, instruction_input_ids, instruction_attention_mask)
                 action_id = out.logits.argmax(dim=-1).item()
