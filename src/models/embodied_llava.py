@@ -46,11 +46,6 @@ class EmbodiedLLaVA(nn.Module):
             output_dim=hidden_dim,
         )
 
-        # QFormerFusion is the only strategy with a different constructor
-        # signature (it needs num_queries/num_heads for its cross-attention
-        # queries); the other three only need hidden_dim. This branch is the
-        # one place that knows about that difference, so everything below
-        # __init__ can stay identical regardless of which strategy is active.
         if fusion_strategy == "qformer":
             self.fusion = QFormerFusion(
                 input_dim=hidden_dim,
@@ -156,12 +151,20 @@ class EmbodiedLLaVA(nn.Module):
                 dim=1,
             )
 
-        outputs = self.llava_model.model(
+        # Call the top-level model directly rather than its inner .model
+        # submodule. When a LoRA adapter is attached via peft, the attribute
+        # name .model is reused internally by peft itself and no longer
+        # refers to the original inner submodule, so calling it directly
+        # would silently skip the LoRA-modified layers or return a
+        # differently-shaped output. Calling the top-level callable works
+        # correctly whether or not LoRA is attached, and already returns
+        # logits directly without needing a separate lm_head call.
+        outputs = self.llava_model(
             inputs_embeds=inputs_embeds,
             attention_mask=combined_attention_mask,
         )
 
-        logits = self.llava_model.lm_head(outputs.last_hidden_state)
+        logits = outputs.logits
 
         loss = None
         if combined_labels is not None:

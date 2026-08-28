@@ -1,4 +1,5 @@
 import json
+import pickle
 import warnings
 from pathlib import Path
 
@@ -172,6 +173,16 @@ class ScanNetRealQADataset(Dataset):
     is the fully authentic condition Section 3.8.3 assumes: real questions
     paired with real per-scene object coordinates, neither placeholder nor
     RoboTHOR-derived.
+
+    Each question is also prefixed with a short text description of the
+    real average color of every object in the scene, extracted from the
+    same mesh file. This is a lightweight substitute for full image input.
+
+    Parsing all scene mesh files is expensive and identical across every
+    run regardless of which fusion strategy is being trained, so the parsed
+    result is cached to disk on first use and loaded directly on every
+    subsequent run, avoiding repeated re-parsing when strategies are
+    trained in separate processes.
     """
 
     def __init__(self, scanqa_json_path: str, scannet_dir: str, max_objects: int = 8):
@@ -186,14 +197,24 @@ class ScanNetRealQADataset(Dataset):
             all_samples = json.load(f)
         self.samples = [s for s in all_samples if s["scene_id"] in available_scenes]
 
-        self._scene_cache = {}
-        for scene_id in available_scenes:
-            scene_dir = self.scannet_dir / scene_id
-            try:
-                objects = extract_scannet_objects(str(scene_dir), scene_id, max_objects=max_objects)
-                self._scene_cache[scene_id] = objects
-            except FileNotFoundError:
-                continue
+        cache_path = self.scannet_dir.parent / "scene_cache.pkl"
+        if cache_path.exists():
+            print(f"Loading cached scene parse results from {cache_path}")
+            with open(cache_path, "rb") as f:
+                self._scene_cache = pickle.load(f)
+        else:
+            print("No cache found, parsing all scenes (this happens only once)...")
+            self._scene_cache = {}
+            for scene_id in available_scenes:
+                scene_dir = self.scannet_dir / scene_id
+                try:
+                    objects = extract_scannet_objects(str(scene_dir), scene_id, max_objects=max_objects)
+                    self._scene_cache[scene_id] = objects
+                except FileNotFoundError:
+                    continue
+            with open(cache_path, "wb") as f:
+                pickle.dump(self._scene_cache, f)
+            print(f"Cached scene parse results to {cache_path}")
 
     def __len__(self):
         return len(self.samples)
@@ -206,6 +227,13 @@ class ScanNetRealQADataset(Dataset):
         answer = sample["answers"][0]
 
         objects = self._scene_cache.get(scene_id, [])
+
+        color_descriptions = ", ".join(
+            f"{obj['label']} is {obj['color_name']}" for obj in objects
+        )
+        if color_descriptions:
+            question = f"Scene colors: {color_descriptions}. Question: {question}"
+
         boxes = [obj["bbox"] for obj in objects]
         category_ids = [hash(obj["label"]) % 100 for obj in objects]
         num_objects = len(boxes)

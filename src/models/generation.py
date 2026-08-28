@@ -6,15 +6,6 @@ import torch
 def truncate_at_sentence_end(text: str) -> str:
     """Cut a generated answer at the first sentence-ending punctuation mark
     (., !, or ?), keeping only what comes before it.
-
-    This is a pragmatic safety net for short training runs: teaching a model
-    to emit an EOS token at exactly the right point requires the labels to
-    supervise that stopping behaviour and enough training steps for it to be
-    learned reliably. Until that is in place (or even alongside it, since no
-    stopping behaviour is ever perfectly learned), truncating at the first
-    sentence boundary keeps EM meaningful by removing the trailing,
-    unrelated tokens a short-trained model tends to keep generating after
-    it has already produced the correct answer.
     """
     match = re.search(r"[.!?]", text)
     if match:
@@ -32,19 +23,16 @@ def generate_answer(
     prompt: str,
     max_new_tokens: int = 10,
     eos_token_id: int | None = None,
+    repetition_penalty: float = 1.3,
 ) -> str:
     """Greedy-decode a free-form text answer from an EmbodiedLLaVA model.
 
-    forward_qa() manually builds inputs_embeds by concatenating fused
-    multimodal tokens with text embeddings, which is not a format the
-    backbone's own .generate() understands out of the box. This function
-    reimplements the minimal autoregressive decoding loop needed to turn
-    that custom forward pass into free-form text: predict one token, feed
-    it back in, repeat.
-
-    Used for computing real EM / BLEU-4 / CIDEr scores (Section 3.8.1),
-    which require an actual generated answer string, not just a
-    teacher-forced loss value.
+    repetition_penalty discourages the model from selecting a token it has
+    already generated earlier in this same answer, by dividing that token's
+    logit (or multiplying, if negative) before the argmax selection. This
+    only affects how fluent a single answer reads; it has no bearing on
+    whether the answer is factually correct, which depends entirely on what
+    the model has learned during training.
     """
     model.eval()
     device = image_tokens.device
@@ -72,14 +60,24 @@ def generate_answer(
     combined_attention_mask = torch.cat([fused_attention_mask, attention_mask], dim=1)
 
     generated_ids = []
+    all_generated_token_ids = set()
+
     for _ in range(max_new_tokens):
-        outputs = model.llava_model.model(
+        outputs = model.llava_model(
             inputs_embeds=inputs_embeds,
             attention_mask=combined_attention_mask,
         )
-        logits = model.llava_model.lm_head(outputs.last_hidden_state)
-        next_token_id = logits[:, -1, :].argmax(dim=-1, keepdim=True)  # greedy: pick the highest-probability token
+        logits = outputs.logits[:, -1, :].clone()
+
+        for token_id in all_generated_token_ids:
+            if logits[0, token_id] > 0:
+                logits[0, token_id] /= repetition_penalty
+            else:
+                logits[0, token_id] *= repetition_penalty
+
+        next_token_id = logits.argmax(dim=-1, keepdim=True)
         generated_ids.append(next_token_id)
+        all_generated_token_ids.add(next_token_id.item())
 
         if eos_token_id is not None and bool((next_token_id == eos_token_id).all()):
             break
