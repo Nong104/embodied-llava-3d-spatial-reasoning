@@ -24,3 +24,11 @@ data/cache/
 
 .DS_Store
 Thumbs.db
+
+data/scannet_raw/scans/
+data/scannet_raw/scene_cache.pkl
+
+run_log.txt
+run_nav_log.txt
+
+hf_cache/
